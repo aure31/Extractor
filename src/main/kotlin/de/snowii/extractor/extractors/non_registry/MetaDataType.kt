@@ -3,11 +3,10 @@ package de.snowii.extractor.extractors.non_registry
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import de.snowii.extractor.Extractor
-import net.minecraft.network.syncher.EntityDataAccessor
-import net.minecraft.network.syncher.SynchedEntityData
+import net.minecraft.network.syncher.EntityDataSerializer
+import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.server.MinecraftServer
 import java.lang.reflect.Modifier
-
 
 class MetaDataType : Extractor.Extractor {
     override fun fileName(): String {
@@ -17,20 +16,22 @@ class MetaDataType : Extractor.Extractor {
     override fun extract(server: MinecraftServer): JsonElement {
         val jsonObject = JsonObject()
 
-        for (field in EntityDataAccessor::class.java.declaredFields) {
-            if (Modifier.isStatic(field.modifiers) &&
-                EntityDataAccessor::class.java.isAssignableFrom(field.type)) {
+        val serializerClass = EntityDataSerializers::class.java
+
+        for (field in serializerClass.declaredFields) {
+            if (Modifier.isStatic(field.modifiers) && EntityDataSerializer::class.java.isAssignableFrom(field.type)) {
 
                 try {
                     field.isAccessible = true
-                    val handler = field.get(null) as EntityDataAccessor<*>
+                    val serializer = field.get(null) as EntityDataSerializer<*>
 
-                    val id = handler.id()
+                    val id = EntityDataSerializers.getSerializedId(serializer)
 
                     if (id != -1) {
                         jsonObject.addProperty(field.name.lowercase(), id)
                     }
                 } catch (e: Exception) {
+                    // Skip internal fields that might not be initialized
                 }
             }
         }

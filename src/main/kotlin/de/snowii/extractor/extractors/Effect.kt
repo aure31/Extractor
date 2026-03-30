@@ -9,7 +9,7 @@ import net.minecraft.core.registries.Registries
 import net.minecraft.server.MinecraftServer
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.world.effect.MobEffect
-import java.util.Optional
+import java.util.*
 
 class Effect : Extractor.Extractor {
     override fun fileName(): String {
@@ -18,9 +18,7 @@ class Effect : Extractor.Extractor {
 
     override fun extract(server: MinecraftServer): JsonElement {
         val json = JsonObject()
-        val registryAccess = server.registries().compositeAccess()
-
-        val attributeRegistry = registryAccess.lookupOrThrow(Registries.MOB_EFFECT)
+        val registry = server.registryAccess().lookupOrThrow(Registries.MOB_EFFECT)
 
         for (effect in BuiltInRegistries.MOB_EFFECT) {
             val itemJson = JsonObject()
@@ -37,16 +35,13 @@ class Effect : Extractor.Extractor {
 
             itemJson.addProperty("translation_key", effect.descriptionId)
 
-            // applySound field via reflection
-            val applySoundField = MobEffect::class.java.getDeclaredField("applySound")
-            applySoundField.isAccessible = true
+            val soundField = MobEffect::class.java.getDeclaredField("soundOnAdded")
+            soundField.isAccessible = true
             @Suppress("UNCHECKED_CAST")
-            val applySound = applySoundField.get(effect) as? Optional<SoundEvent>
-            applySound?.ifPresent { soundEvent ->
-                itemJson.addProperty(
-                    "apply_sound",
-                    BuiltInRegistries.SOUND_EVENT.getKey(soundEvent)!!.path
-                )
+            val soundOpt = soundField.get(effect) as? Optional<SoundEvent>
+            soundOpt?.ifPresent { soundEvent ->
+                val soundKey = BuiltInRegistries.SOUND_EVENT.getKey(soundEvent)
+                itemJson.addProperty("apply_sound", soundKey?.toString())
             }
 
             val attributeModifiersJson = JsonArray()
@@ -56,14 +51,15 @@ class Effect : Extractor.Extractor {
                     "attribute",
                     attributeHolder.unwrapKey().get().identifier().path
                 )
-                modJson.addProperty("operation", modifier.operation().toString())
+                modJson.addProperty("operation", modifier.operation().name)
                 modJson.addProperty("id", modifier.id().toString())
                 modJson.addProperty("baseValue", modifier.amount())
                 attributeModifiersJson.add(modJson)
             }
             itemJson.add("attribute_modifiers", attributeModifiersJson)
 
-            json.add(attributeRegistry.getKey(effect)!!.path, itemJson)
+            val effectKey = BuiltInRegistries.MOB_EFFECT.getKey(effect)
+            json.add(effectKey!!.path, itemJson)
         }
 
         return json

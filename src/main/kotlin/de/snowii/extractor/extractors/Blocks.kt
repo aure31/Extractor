@@ -93,12 +93,18 @@ class Blocks : Extractor.Extractor {
 
             block.lootTable.ifPresent { key ->
                 val table = server.reloadableRegistries().getLootTable(key)
-                blockJson.add("loot_table", LootTable.DIRECT_CODEC.encodeStart(JsonOps.INSTANCE, table).getOrThrow())
+
+                val ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE)
+
+                blockJson.add(
+                    "loot_table",
+                    LootTable.DIRECT_CODEC.encodeStart(ops, table).getOrThrow()
+                )
             }
 
             val propsJson = JsonArray()
             for (prop in block.stateDefinition.properties) {
-                propsJson.add(prop.name.hashCode())
+                propsJson.add(prop.hashCode())
             }
             blockJson.add("properties", propsJson)
 

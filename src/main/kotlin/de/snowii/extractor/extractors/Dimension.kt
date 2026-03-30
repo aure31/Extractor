@@ -15,16 +15,23 @@ class Dimension : Extractor.Extractor {
 
     override fun extract(server: MinecraftServer): JsonElement {
         val finalJson = JsonObject()
-        val registry =
-            server.registryAccess().lookupOrThrow(Registries.DIMENSION_TYPE)
 
-        for (setting in registry) {
+        val registry = server.registryAccess().lookupOrThrow(Registries.DIMENSION_TYPE)
+
+        val ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE)
+
+        registry.listElements().forEach { holder ->
+            val dimensionType = holder.value()
+            val key = holder.key()
+
+            val json = DimensionType.DIRECT_CODEC.encodeStart(
+                ops,
+                dimensionType
+            ).getOrThrow()
+
             finalJson.add(
-                registry.getId(setting).toString(),
-                DimensionType.DIRECT_CODEC.encodeStart(
-                    JsonOps.INSTANCE,
-                    setting
-                ).getOrThrow()
+                key.identifier().toString(),
+                json
             )
         }
 

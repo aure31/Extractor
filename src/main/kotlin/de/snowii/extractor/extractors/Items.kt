@@ -5,36 +5,41 @@ import com.google.gson.JsonObject
 import com.mojang.serialization.JsonOps
 import de.snowii.extractor.Extractor
 import net.minecraft.core.component.DataComponentMap
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.registries.Registries
 import net.minecraft.server.MinecraftServer
-
 
 class Items : Extractor.Extractor {
     override fun fileName(): String {
         return "items.json"
     }
 
-
     override fun extract(server: MinecraftServer): JsonElement {
         val itemsJson = JsonObject()
-        val registry =
-            server.registryAccess().lookupOrThrow(Registries.ITEM)
+        val registryAccess = server.registryAccess()
 
-        for (realItem in registry.stream()) {
+        val ops = registryAccess.createSerializationContext(JsonOps.INSTANCE)
+
+        val registry = registryAccess.lookupOrThrow(Registries.ITEM)
+
+        registry.listElements().forEach { holder ->
+            val realItem = holder.value()
+            val itemKey = holder.key()
+
             val itemJson = JsonObject()
 
-            itemJson.addProperty("id", BuiltInRegistries.ITEM.getId(realItem))
+            itemJson.addProperty("id", registry.getId(realItem))
+
             itemJson.add(
                 "components",
                 DataComponentMap.CODEC.encodeStart(
-                    JsonOps.INSTANCE,
+                    ops,
                     realItem.components()
                 ).getOrThrow()
             )
 
-            itemsJson.add(BuiltInRegistries.ITEM.getKey(realItem).path, itemJson)
+            itemsJson.add(itemKey.identifier().path, itemJson)
         }
+
         return itemsJson
     }
 }

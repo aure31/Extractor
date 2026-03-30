@@ -15,14 +15,26 @@ class NoiseParameters : Extractor.Extractor {
 
     override fun extract(server: MinecraftServer): JsonElement {
         val noisesJson = JsonObject()
-        val registryAccess = server.registries().compositeAccess()
-        val ops = registryAccess.createSerializationContext(JsonOps.INSTANCE)
+        val registryAccess = server.registryAccess()
+
         val registry = registryAccess.lookupOrThrow(Registries.NOISE)
 
-        registry.asHolderIdMap().forEach { entry ->
+        val ops = JsonOps.INSTANCE
+
+        registry.listElements().forEach { holder ->
+            val noise = holder.value()
+            val key = holder.key()
+
+            val json = NormalNoise.NoiseParameters.DIRECT_CODEC.encodeStart(
+                ops,
+                noise
+            ).getOrThrow()
+
+            val sanitizedName = key.identifier().path.replace('/', '_')
+
             noisesJson.add(
-                entry.unwrapKey().get().identifier().path,
-                NormalNoise.NoiseParameters.DIRECT_CODEC.encodeStart(ops, entry.value()).orThrow
+                sanitizedName,
+                json
             )
         }
 

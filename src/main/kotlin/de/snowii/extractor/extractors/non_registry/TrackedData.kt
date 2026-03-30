@@ -3,10 +3,10 @@ package de.snowii.extractor.extractors.non_registry
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import de.snowii.extractor.Extractor
-import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.network.syncher.EntityDataAccessor
-import net.minecraft.server.MinecraftServer
 import net.minecraft.world.entity.Entity
+import net.minecraft.network.syncher.EntityDataAccessor
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.server.MinecraftServer
 import net.minecraft.world.entity.EntitySpawnReason
 
 class TrackedData : Extractor.Extractor {
@@ -20,7 +20,7 @@ class TrackedData : Extractor.Extractor {
 
         BuiltInRegistries.ENTITY_TYPE.forEach { entityType ->
             val entityInstance: Entity? = try {
-                entityType.create(world, EntitySpawnReason.NATURAL)
+                entityType.create(world, EntitySpawnReason.TRIGGERED)
             } catch (e: Exception) {
                 null
             }
@@ -30,13 +30,14 @@ class TrackedData : Extractor.Extractor {
 
                 while (currentClass != null && Entity::class.java.isAssignableFrom(currentClass)) {
                     for (field in currentClass.declaredFields) {
-                        if (field.type == TrackedData::class.java) {
+                        // Use the fully qualified Minecraft class to avoid collision with 'this' class name
+                        if (field.type == EntityDataAccessor::class.java) {
                             try {
                                 field.isAccessible = true
                                 val trackedData = field.get(null) as EntityDataAccessor<*>
-
-                                result.addProperty(field.name, trackedData.id())
+                                result.addProperty(field.name, trackedData.id)
                             } catch (e: Exception) {
+                                // Field might not be static or initialized yet
                             }
                         }
                     }
@@ -48,6 +49,4 @@ class TrackedData : Extractor.Extractor {
 
         return result
     }
-
-
 }

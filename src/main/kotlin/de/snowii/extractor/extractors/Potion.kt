@@ -25,7 +25,7 @@ class Potion : Extractor.Extractor {
             itemJson.addProperty("base_name", realPotion.name())
             for (effect in realPotion.effects) {
                 val obj = JsonObject()
-                obj.addProperty("effect_type", effect.particleOptions.type.toString())
+                obj.addProperty("effect_type", effect.effect.unwrapKey().get().identifier().toString())
                 obj.addProperty("duration", effect.duration)
                 obj.addProperty("amplifier", effect.amplifier)
                 obj.addProperty("ambient", effect.isAmbient)

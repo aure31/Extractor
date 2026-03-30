@@ -15,15 +15,23 @@ class ConfiguredFeatures : Extractor.Extractor {
 
     override fun extract(server: MinecraftServer): JsonElement {
         val finalJson = JsonObject()
-        val registry =
-            server.registryAccess().lookupOrThrow(Registries.CONFIGURED_FEATURE)
-        for (setting in registry) {
+
+        val registry = server.registryAccess().lookupOrThrow(Registries.CONFIGURED_FEATURE)
+
+        val ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE)
+
+        registry.listElements().forEach { holder ->
+            val feature = holder.value()
+            val key = holder.key()
+
+            val json = ConfiguredFeature.DIRECT_CODEC.encodeStart(
+                ops,
+                feature
+            ).getOrThrow()
+
             finalJson.add(
-                registry.getKey(setting)!!.path,
-                ConfiguredFeature.DIRECT_CODEC.encodeStart(
-                    JsonOps.INSTANCE,
-                    setting
-                ).getOrThrow()
+                key.identifier().path,
+                json
             )
         }
 

@@ -5,11 +5,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import de.snowii.extractor.Extractor
 import net.minecraft.server.MinecraftServer
-import net.minecraft.world.item.Item
-import net.minecraft.world.level.block.state.properties.BooleanProperty
-import net.minecraft.world.level.block.state.properties.EnumProperty
-import net.minecraft.world.level.block.state.properties.IntegerProperty
-import net.minecraft.world.level.block.state.properties.Property
+import net.minecraft.util.StringRepresentable
+import net.minecraft.world.level.block.state.properties.*
 import java.lang.reflect.Modifier
 
 class Properties : Extractor.Extractor {
@@ -20,55 +17,77 @@ class Properties : Extractor.Extractor {
     override fun extract(server: MinecraftServer): JsonElement {
         val topLevelJson = JsonArray()
 
-        for (field in Item.Properties::class.java.declaredFields) {
-            if (Modifier.isStatic(field.modifiers)) {
-                val maybeProperty = field.get(null)
-                if (maybeProperty is Property<*>) {
-                    val property = JsonObject()
-                    // The key used by Blocks.json to map to a property
-                    property.addProperty("hash_key", maybeProperty.hashCode())
-                    // The unique enum name
-                    property.addProperty("enum_name", field.name.lowercase())
-                    // What the enum is serialized as, may overlap with others
-                    property.addProperty("serialized_name", maybeProperty.name.lowercase())
+        // CRITICAL: You want BlockStateProperties, not Item.Properties
+        val propertiesClass = BlockStateProperties::class.java
 
-                    when (maybeProperty) {
-                        is BooleanProperty -> {
-                            property.addProperty("type", "boolean")
-                        }
+        for (field in propertiesClass.declaredFields) {
+            // Only grab "public static final Property" fields
+            if (Modifier.isStatic(field.modifiers) && Property::class.java.isAssignableFrom(field.type)) {
 
-                        is IntegerProperty -> {
-                            var min: Int? = null
-                            var max: Int? = null
-                            for (intField in IntegerProperty::class.java.declaredFields) {
-                                intField.trySetAccessible()
-                                if (intField.name == "min") {
-                                    min = intField.get(maybeProperty) as Int
-                                } else if (intField.name == "max") {
-                                    max = intField.get(maybeProperty) as Int
-                                }
-                            }
-                            property.addProperty("type", "int")
-                            property.addProperty("min", min!!)
-                            property.addProperty("max", max!!)
-                        }
+                field.isAccessible = true // Fixes the IllegalAccessException
+                val maybeProperty = field.get(null) as? Property<*> ?: continue
 
-                        is EnumProperty<*> -> {
-                            property.addProperty("type", "enum")
-                            val enumArr = JsonArray()
-                            for (value in maybeProperty.possibleValues) {
-                                enumArr.add(value.toString().lowercase())
-                            }
-                            property.add("values", enumArr)
-                        }
+                val propertyJson = JsonObject()
 
-                        else -> throw Exception("Unhandled property type: " + maybeProperty.javaClass.toString())
+                // Metadata for mapping
+                propertyJson.addProperty("hash_key", maybeProperty.hashCode())
+                propertyJson.addProperty("enum_name", field.name.lowercase())
+                propertyJson.addProperty("serialized_name", maybeProperty.name)
+
+                when (maybeProperty) {
+                    is BooleanProperty -> {
+                        propertyJson.addProperty("type", "boolean")
                     }
 
-                    topLevelJson.add(property)
+                    is IntegerProperty -> {
+                        propertyJson.addProperty("type", "int")
+
+                        // Reflection to get min/max from IntegerProperty
+                        // In 1.21.4, these might be named 'min'/'max' or 'f_61623_'/'f_61624_'
+                        val minField = IntegerProperty::class.java.declaredFields.find { it.name == "min" || it.name.contains("min") }
+                        val maxField = IntegerProperty::class.java.declaredFields.find { it.name == "max" || it.name.contains("max") }
+
+                        minField?.isAccessible = true
+                        maxField?.isAccessible = true
+
+                        propertyJson.addProperty("min", minField?.get(maybeProperty) as Int)
+                        propertyJson.addProperty("max", maxField?.get(maybeProperty) as Int)
+                    }
+
+                    is EnumProperty<*> -> {
+                        propertyJson.addProperty("type", "enum")
+                        val enumArr = JsonArray()
+
+                        // 1. Cast to a type that implements the required 1.21.4 interfaces
+                        @Suppress("UNCHECKED_CAST")
+                        val typedProp = maybeProperty as EnumProperty<out StringRepresentable>
+
+                        for (value in typedProp.possibleValues) {
+                            if (value is StringRepresentable) {
+                                enumArr.add(value.serializedName.lowercase())
+                            } else {
+                                // Fallback for non-enum StringRepresentables if any exist
+                                enumArr.add(value.toString().lowercase())
+                            }
+                        }
+                        propertyJson.add("values", enumArr)
+                    }
+
+                    else -> {
+                        // For DirectionProperty or other specialized types
+                        propertyJson.addProperty("type", "other")
+                    }
                 }
+
+                topLevelJson.add(propertyJson)
             }
         }
         return topLevelJson
+    }
+
+    private fun <T> getNameUnsafe(property: EnumProperty<T>, value: Any): String
+            where T : Enum<T>, T : StringRepresentable {
+        @Suppress("UNCHECKED_CAST")
+        return property.getName(value as T)
     }
 }
